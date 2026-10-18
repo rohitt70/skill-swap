@@ -1,0 +1,382 @@
+// SkillSwap Prisma Schema
+// Database Engine: PostgreSQL
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  STUDENT
+  MODERATOR
+  ADMIN
+}
+
+enum SkillType {
+  TEACH
+  LEARN
+}
+
+enum ProficiencyLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+enum FriendRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+enum ChatSessionStatus {
+  CREATED
+  ACTIVE
+  IDLE_WARNING
+  LOCKED
+  EXPIRED
+  CLOSED
+}
+
+enum LearningSessionStatus {
+  PROPOSED
+  ACCEPTED
+  DECLINED
+  CANCELLED
+  COMPLETED
+}
+
+enum LearningFormat {
+  VIRTUAL
+  IN_PERSON
+  HYBRID
+}
+
+enum ReportStatus {
+  PENDING
+  INVESTIGATING
+  RESOLVED
+  DISMISSED
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  role          UserRole  @default(STUDENT)
+  isVerified    Boolean   @default(false) @map("is_verified")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  profile               UserProfile?
+  sessions              UserSession[]
+  skills                UserSkill[]
+  sentFriendRequests    FriendRequest[]            @relation("SentRequests")
+  receivedFriendRequests FriendRequest[]           @relation("ReceivedRequests")
+  friendshipsInitiated  Friendship[]               @relation("FriendshipsInitiated")
+  friendshipsReceived   Friendship[]               @relation("FriendshipsReceived")
+  conversations         ConversationParticipant[]
+  sentMessages          Message[]
+  messageReceipts       MessageReceipt[]
+  requestedLearnings    LearningSession[]          @relation("LearnerSessions")
+  taughtLearnings       LearningSession[]          @relation("TeacherSessions")
+  reviewsGiven          Review[]                   @relation("ReviewAuthor")
+  reviewsReceived       Review[]                   @relation("ReviewTarget")
+  notifications         Notification[]
+  blockedUsers          UserBlock[]                @relation("BlockedUsers")
+  blockedBy             UserBlock[]                @relation("BlockedByUsers")
+  filedReports          UserReport[]               @relation("FiledReports")
+  reportsAgainst        UserReport[]               @relation("ReportedUser")
+  auditEvents           AuditEvent[]
+
+  @@map("users")
+}
+
+model UserProfile {
+  id             String         @id @default(uuid())
+  userId         String         @unique @map("user_id")
+  displayName    String         @map("display_name")
+  institution    String         @default("University")
+  major          String?
+  graduationYear Int?           @map("graduation_year")
+  bio            String?
+  avatarUrl      String?        @map("avatar_url")
+  preferredFormat LearningFormat @default(VIRTUAL) @map("preferred_format")
+  availability   String?        @default("Evenings & Weekends")
+  timeZone       String         @default("UTC") @map("time_zone")
+  reputationScore Float         @default(5.0) @map("reputation_score")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([institution])
+  @@map("user_profiles")
+}
+
+model UserSession {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  refreshTokenHash String @map("refresh_token_hash")
+  userAgent    String?   @map("user_agent")
+  ipAddress    String?   @map("ip_address")
+  expiresAt    DateTime  @map("expires_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_sessions")
+}
+
+model Skill {
+  id          String      @id @default(uuid())
+  name        String      @unique
+  category    String      @default("General")
+  description String?
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  userSkills  UserSkill[]
+
+  @@index([category])
+  @@map("skills")
+}
+
+model UserSkill {
+  id               String           @id @default(uuid())
+  userId           String           @map("user_id")
+  skillId          String           @map("skill_id")
+  type             SkillType        @default(TEACH)
+  proficiencyLevel ProficiencyLevel @default(INTERMEDIATE) @map("proficiency_level")
+  notes            String?
+  createdAt        DateTime         @default(now()) @map("created_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skillId, type])
+  @@index([userId])
+  @@index([skillId])
+  @@map("user_skills")
+}
+
+model FriendRequest {
+  id          String              @id @default(uuid())
+  senderId    String              @map("sender_id")
+  recipientId String              @map("recipient_id")
+  status      FriendRequestStatus @default(PENDING)
+  note        String?
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  sender    User @relation("SentRequests", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient User @relation("ReceivedRequests", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, recipientId])
+  @@index([recipientId, status])
+  @@index([senderId, status])
+  @@map("friend_requests")
+}
+
+model Friendship {
+  id        String   @id @default(uuid())
+  userAId   String   @map("user_a_id")
+  userBId   String   @map("user_b_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  userA User @relation("FriendshipsInitiated", fields: [userAId], references: [id], onDelete: Cascade)
+  userB User @relation("FriendshipsReceived", fields: [userBId], references: [id], onDelete: Cascade)
+
+  @@unique([userAId, userBId])
+  @@index([userAId])
+  @@index([userBId])
+  @@map("friendships")
+}
+
+model Conversation {
+  id          String   @id @default(uuid())
+  isGroup     Boolean  @default(false) @map("is_group")
+  title       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  participants ConversationParticipant[]
+  chatSessions ChatSession[]
+  messages     Message[]
+
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id             String    @id @default(uuid())
+  conversationId String    @map("conversation_id")
+  userId         String    @map("user_id")
+  lastReadAt     DateTime? @map("last_read_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_participants")
+}
+
+model ChatSession {
+  id             String            @id @default(uuid())
+  conversationId String            @map("conversation_id")
+  status         ChatSessionStatus @default(ACTIVE)
+  startedAt      DateTime          @default(now()) @map("started_at")
+  lastActivityAt DateTime          @default(now()) @map("last_activity_at")
+  expiresAt      DateTime          @map("expires_at")
+  lockedAt       DateTime?         @map("locked_at")
+  closedAt       DateTime?         @map("closed_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, status])
+  @@index([status, lastActivityAt])
+  @@map("chat_sessions")
+}
+
+model Message {
+  id             String    @id @default(uuid())
+  conversationId String    @map("conversation_id")
+  senderId       String    @map("sender_id")
+  content        String
+  ciphertext     String?   // For future Mode B E2EE migration
+  isEdited       Boolean   @default(false) @map("is_edited")
+  isDeleted      Boolean   @default(false) @map("is_deleted")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  conversation Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User             @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  receipts     MessageReceipt[]
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+model MessageReceipt {
+  id        String   @id @default(uuid())
+  messageId String   @map("message_id")
+  userId    String   @map("user_id")
+  isRead    Boolean  @default(false) @map("is_read")
+  readAt    DateTime? @map("read_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@map("message_receipts")
+}
+
+model LearningSession {
+  id          String                @id @default(uuid())
+  learnerId   String                @map("learner_id")
+  teacherId   String                @map("teacher_id")
+  skillName   String                @map("skill_name")
+  topic       String
+  scheduledAt DateTime              @map("scheduled_at")
+  durationMins Int                  @default(60) @map("duration_mins")
+  format      LearningFormat        @default(VIRTUAL)
+  location    String?
+  status      LearningSessionStatus @default(PROPOSED)
+  notes       String?
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+
+  learner User     @relation("LearnerSessions", fields: [learnerId], references: [id], onDelete: Cascade)
+  teacher User     @relation("TeacherSessions", fields: [teacherId], references: [id], onDelete: Cascade)
+  reviews Review[]
+
+  @@index([learnerId, status])
+  @@index([teacherId, status])
+  @@map("learning_sessions")
+}
+
+model Review {
+  id                String   @id @default(uuid())
+  learningSessionId String   @map("learning_session_id")
+  authorId          String   @map("author_id")
+  targetId          String   @map("target_id")
+  rating            Int      // 1 to 5
+  feedback          String?
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  learningSession LearningSession @relation(fields: [learningSessionId], references: [id], onDelete: Cascade)
+  author          User            @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  target          User            @relation("ReviewTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([learningSessionId, authorId])
+  @@map("reviews")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String   // FRIEND_REQUEST, FRIEND_ACCEPT, NEW_MESSAGE, SESSION_BOOKED, SESSION_STATUS
+  title     String
+  message   String
+  metadata  String?  // JSON serialized context
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model UserBlock {
+  id        String   @id @default(uuid())
+  blockerId String   @map("blocker_id")
+  blockedId String   @map("blocked_id")
+  reason    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  blocker User @relation("BlockedUsers", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("BlockedByUsers", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@map("user_blocks")
+}
+
+model UserReport {
+  id          String       @id @default(uuid())
+  reporterId  String       @map("reporter_id")
+  reportedId  String       @map("reported_id")
+  reason      String
+  details     String?
+  status      ReportStatus @default(PENDING)
+  adminNotes  String?      @map("admin_notes")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  reporter User @relation("FiledReports", fields: [reporterId], references: [id], onDelete: Cascade)
+  reported User @relation("ReportedUser", fields: [reportedId], references: [id], onDelete: Cascade)
+
+  @@map("user_reports")
+}
+
+model AuditEvent {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  action     String   // e.g. AUTH_LOGIN, CHAT_SESSION_LOCKED, USER_REPORTED
+  ipAddress  String?  @map("ip_address")
+  details    String?  // JSON string
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([action, createdAt])
+  @@map("audit_events")
+}
