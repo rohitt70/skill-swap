@@ -9,6 +9,7 @@ import { FriendsModule } from './friends/friends.module';
 import { ChatModule } from './chat/chat.module';
 import { LearningSessionsModule } from './learning-sessions/learning-sessions.module';
 import { ModerationModule } from './moderation/moderation.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { ModerationModule } from './moderation/moderation.module';
     ChatModule,
     LearningSessionsModule,
     ModerationModule,
+    NotificationsModule,
   ],
 })
 export class AppModule {}

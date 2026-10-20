@@ -15,9 +15,85 @@ import { AuthGuard } from '../common/guards/auth.guard';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Request, Response } from 'express';
 
-@Controller('api/v1/auth')
+@Controller(['api/v1/auth', 'auth'])
 export class AuthController {
   constructor(private authService: AuthService) {}
+
+  private setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
+    const isProd = process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true';
+    const accessMaxAge = this.authService.getAccessCookieMaxAge();
+    const refreshMaxAge = this.authService.getRefreshCookieMaxAge();
+
+    // HttpOnly Access Token Cookie
+    res.cookie('access_token', accessToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: 'lax',
+      maxAge: accessMaxAge,
+      path: '/',
+    });
+
+    // HttpOnly Refresh Token Cookie
+    res.cookie('refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: 'lax',
+      maxAge: refreshMaxAge,
+      path: '/',
+    });
+
+    // Client-readable CSRF Token Cookie (Double-Submit CSRF Pattern)
+    const csrfToken = this.authService.generateCsrfToken();
+    res.cookie('csrf_token', csrfToken, {
+      httpOnly: false,
+      secure: isProd,
+      sameSite: 'lax',
+      maxAge: refreshMaxAge,
+      path: '/',
+    });
+  }
+
+  private clearAuthCookies(res: Response) {
+    const isProd = process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true';
+
+    res.clearCookie('access_token', {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: 'lax',
+      path: '/',
+    });
+
+    res.clearCookie('refresh_token', {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: 'lax',
+      path: '/',
+    });
+
+    res.clearCookie('csrf_token', {
+      httpOnly: false,
+      secure: isProd,
+      sameSite: 'lax',
+      path: '/',
+    });
+  }
+
+  @Get('csrf')
+  async getCsrfToken(@Res({ passthrough: true }) res: Response) {
+    const isProd = process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true';
+    const csrfToken = this.authService.generateCsrfToken();
+    const refreshMaxAge = this.authService.getRefreshCookieMaxAge();
+
+    res.cookie('csrf_token', csrfToken, {
+      httpOnly: false,
+      secure: isProd,
+      sameSite: 'lax',
+      maxAge: refreshMaxAge,
+      path: '/',
+    });
+
+    return { csrfToken };
+  }
 
   @Post('register')
   async register(
@@ -28,15 +104,14 @@ export class AuthController {
     const ip = req.ip || req.socket.remoteAddress;
     const result = await this.authService.register(dto, ip);
 
-    // Set secure HTTP-only cookie for refresh token
-    res.cookie('refresh_token', result.refreshToken, {
-      httpOnly: true,
-      secure: process.env.COOKIE_SECURE === 'true',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    this.setAuthCookies(res, result.accessToken, result.refreshToken);
 
-    return result;
+    // Omit tokens from response JSON payload
+    return {
+      success: true,
+      message: 'User registered successfully',
+      user: result.user,
+    };
   }
 
   @Post('login')
@@ -50,14 +125,14 @@ export class AuthController {
     const userAgent = req.headers['user-agent'];
     const result = await this.authService.login(dto, ip, userAgent);
 
-    res.cookie('refresh_token', result.refreshToken, {
-      httpOnly: true,
-      secure: process.env.COOKIE_SECURE === 'true',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    this.setAuthCookies(res, result.accessToken, result.refreshToken);
 
-    return result;
+    // Omit tokens from response JSON payload
+    return {
+      success: true,
+      message: 'Logged in successfully',
+      user: result.user,
+    };
   }
 
   @Post('refresh')
@@ -67,18 +142,19 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const token = body.refreshToken || req.cookies?.refresh_token;
+    const token = body?.refreshToken || req.cookies?.refresh_token;
     const ip = req.ip || req.socket.remoteAddress;
-    const result = await this.authService.refreshToken(token, ip);
+    const userAgent = req.headers['user-agent'];
+    const result = await this.authService.refreshToken(token, ip, userAgent);
 
-    res.cookie('refresh_token', result.refreshToken, {
-      httpOnly: true,
-      secure: process.env.COOKIE_SECURE === 'true',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    this.setAuthCookies(res, result.accessToken, result.refreshToken);
 
-    return result;
+    // Omit tokens from response JSON payload
+    return {
+      success: true,
+      message: 'Session refreshed successfully',
+      user: result.user,
+    };
   }
 
   @Post('logout')
@@ -91,7 +167,7 @@ export class AuthController {
   ) {
     const token = req.cookies?.refresh_token;
     await this.authService.logout(user.id, token);
-    res.clearCookie('refresh_token');
+    this.clearAuthCookies(res);
     return { success: true, message: 'Logged out successfully' };
   }
 

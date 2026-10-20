@@ -168,7 +168,10 @@ export class FriendsService {
       let conv = await tx.conversation.findFirst({
         where: {
           isGroup: false,
-          participants: { every: { userId: { in: [userA, userB] } } },
+          AND: [
+            { participants: { some: { userId: userA } } },
+            { participants: { some: { userId: userB } } },
+          ],
         },
       });
 

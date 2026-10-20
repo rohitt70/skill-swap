@@ -5,14 +5,14 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: skillswap_user
-      POSTGRES_PASSWORD: skillswap_password
+      POSTGRES_PASSWORD: 1234
       POSTGRES_DB: skillswap_db
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U skillswap_user -d skillswap_db"]
+      test: [ "CMD-SHELL", "pg_isready -U skillswap_user -d skillswap_db" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -26,7 +26,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -42,12 +42,12 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4000
-      DATABASE_URL: postgresql://skillswap_user:skillswap_password@postgres:5432/skillswap_db?schema=public
+      DATABASE_URL: postgresql://skillswap_user:1234@postgres:5432/skillswap_db?schema=public
       REDIS_HOST: redis
       REDIS_PORT: 6379
       FRONTEND_URL: http://localhost:3000
-      JWT_SECRET: super_secure_dev_jwt_secret_at_least_32_characters
-      JWT_REFRESH_SECRET: super_secure_dev_refresh_secret_at_least_32_characters
+      JWT_SECRET: 2971f847f601e55d3c91389be5eb06686042279f5b7c63f8125f696a74a24fe79089b08a1550932bfe66db6ce8a3b9db598cea7f71e8c8b6f9978d3a711e143f
+      JWT_REFRESH_SECRET: 4c2eb676c9e2497eb873a60e7ec1a982d14a8a509b0afd30c20c8d9e2a9cb46513820bf521d55dfdb76e07d8dbf578f8c97b6d1cedb01735dc29f3c38f412524
     depends_on:
       postgres:
         condition: service_healthy

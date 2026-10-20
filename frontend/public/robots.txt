@@ -1,0 +1,3 @@
+# SkillSwap Public Assets
+User-agent: *
+Allow: /

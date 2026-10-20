@@ -65,6 +65,12 @@ enum ReportStatus {
   DISMISSED
 }
 
+enum ThemePreference {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
 model User {
   id            String    @id @default(uuid())
   email         String    @unique
@@ -76,6 +82,8 @@ model User {
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
   profile               UserProfile?
+  settings              UserSettings?
+  socialLinks           SocialLink[]
   sessions              UserSession[]
   skills                UserSkill[]
   sentFriendRequests    FriendRequest[]            @relation("SentRequests")
@@ -100,20 +108,23 @@ model User {
 }
 
 model UserProfile {
-  id             String         @id @default(uuid())
-  userId         String         @unique @map("user_id")
-  displayName    String         @map("display_name")
-  institution    String         @default("University")
-  major          String?
-  graduationYear Int?           @map("graduation_year")
-  bio            String?
-  avatarUrl      String?        @map("avatar_url")
+  id              String         @id @default(uuid())
+  userId          String         @unique @map("user_id")
+  displayName     String         @map("display_name")
+  headline        String?        @map("headline")
+  institution     String         @default("University")
+  major           String?
+  graduationYear  Int?           @map("graduation_year")
+  location        String?
+  bio             String?
+  avatarUrl       String?        @map("avatar_url")
+  portfolioUrl    String?        @map("portfolio_url")
   preferredFormat LearningFormat @default(VIRTUAL) @map("preferred_format")
-  availability   String?        @default("Evenings & Weekends")
-  timeZone       String         @default("UTC") @map("time_zone")
-  reputationScore Float         @default(5.0) @map("reputation_score")
-  createdAt      DateTime       @default(now()) @map("created_at")
-  updatedAt      DateTime       @updatedAt @map("updated_at")
+  availability    String?        @default("Evenings & Weekends")
+  timeZone        String         @default("UTC") @map("time_zone")
+  reputationScore Float          @default(5.0) @map("reputation_score")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -121,14 +132,50 @@ model UserProfile {
   @@map("user_profiles")
 }
 
+model SocialLink {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  platform  String   // LINKEDIN, GITHUB, PORTFOLIO, TWITTER, WEBSITE, OTHER
+  url       String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform])
+  @@index([userId])
+  @@map("social_links")
+}
+
+model UserSettings {
+  id                         String          @id @default(uuid())
+  userId                     String          @unique @map("user_id")
+  theme                      ThemePreference @default(SYSTEM)
+  isProfilePublic            Boolean         @default(true) @map("is_profile_public")
+  showSocialLinks            Boolean         @default(true) @map("show_social_links")
+  showEmail                  Boolean         @default(false) @map("show_email")
+  showAvailability           Boolean         @default(true) @map("show_availability")
+  showInstitution            Boolean         @default(true) @map("show_institution")
+  emailNotifications         Boolean         @default(true) @map("email_notifications")
+  friendRequestNotifications Boolean         @default(true) @map("friend_request_notifications")
+  sessionNotifications       Boolean         @default(true) @map("session_notifications")
+  chatNotifications          Boolean         @default(true) @map("chat_notifications")
+  createdAt                  DateTime        @default(now()) @map("created_at")
+  updatedAt                  DateTime        @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
 model UserSession {
-  id           String    @id @default(uuid())
-  userId       String    @map("user_id")
-  refreshTokenHash String @map("refresh_token_hash")
-  userAgent    String?   @map("user_agent")
-  ipAddress    String?   @map("ip_address")
-  expiresAt    DateTime  @map("expires_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  id               String    @id @default(uuid())
+  userId           String    @map("user_id")
+  refreshTokenHash String    @map("refresh_token_hash")
+  userAgent        String?   @map("user_agent")
+  ipAddress        String?   @map("ip_address")
+  expiresAt        DateTime  @map("expires_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

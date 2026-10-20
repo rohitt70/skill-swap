@@ -8,6 +8,39 @@ import * as cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
+
+  // Validate JWT Secrets & Expiration Configuration
+  const jwtSecret = process.env.JWT_SECRET;
+  const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET;
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (!jwtSecret) {
+    throw new Error('FATAL: JWT_SECRET environment variable is missing.');
+  }
+  if (!jwtRefreshSecret) {
+    throw new Error('FATAL: JWT_REFRESH_SECRET environment variable is missing.');
+  }
+  if (jwtSecret === jwtRefreshSecret) {
+    throw new Error('FATAL: JWT_SECRET and JWT_REFRESH_SECRET must be distinct keys.');
+  }
+
+  if (isProduction) {
+    if (jwtSecret.length < 32) {
+      throw new Error('FATAL: JWT_SECRET must be at least 32 characters long in production.');
+    }
+    if (jwtRefreshSecret.length < 32) {
+      throw new Error('FATAL: JWT_REFRESH_SECRET must be at least 32 characters long in production.');
+    }
+  }
+
+  const { parseDurationToMs } = await import('./common/utils/duration.util');
+  const accessMs = parseDurationToMs(process.env.JWT_EXPIRES_IN || '15m');
+  const refreshMs = parseDurationToMs(process.env.JWT_REFRESH_EXPIRES_IN || '7d');
+
+  if (refreshMs <= accessMs) {
+    throw new Error('FATAL: JWT_REFRESH_EXPIRES_IN must be strictly greater than JWT_EXPIRES_IN.');
+  }
+
   const app = await NestFactory.create(AppModule);
 
   // Security & Middleware
@@ -16,7 +49,8 @@ async function bootstrap() {
     origin: process.env.FRONTEND_URL || 'http://localhost:3000',
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-CSRF-Token'],
+    exposedHeaders: ['X-CSRF-Token'],
   });
 
   // Global filters & interceptors

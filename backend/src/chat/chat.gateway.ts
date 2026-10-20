@@ -22,7 +22,7 @@ interface AuthenticatedSocket extends Socket {
 
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
     credentials: true,
   },
 })
@@ -31,16 +31,35 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   server: Server;
 
   private readonly logger = new Logger(ChatGateway.name);
-  private readonly jwtSecret = process.env.JWT_SECRET || 'fallback_secret_for_development_skillswap';
 
   constructor(private chatService: ChatService) {}
 
+  private extractTokenFromCookie(cookieHeader?: string): string | null {
+    if (!cookieHeader) return null;
+    const match = cookieHeader.match(/(?:^|;\s*)access_token=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
   async handleConnection(client: AuthenticatedSocket) {
     try {
+      const jwtSecret = process.env.JWT_SECRET;
+      if (!jwtSecret) {
+        this.logger.error('CRITICAL: JWT_SECRET environment variable is missing.');
+        client.disconnect();
+        return;
+      }
+
+      const cookieToken = this.extractTokenFromCookie(client.handshake.headers?.cookie);
+      const authHeader = client.handshake.headers?.authorization;
+      const bearerToken = authHeader && authHeader.startsWith('Bearer ')
+        ? authHeader.substring(7)
+        : undefined;
+
       const token =
         (client.handshake.auth?.token as string) ||
-        (client.handshake.query?.token as string) ||
-        (client.handshake.headers?.authorization?.replace('Bearer ', ''));
+        bearerToken ||
+        cookieToken ||
+        (client.handshake.query?.token as string);
 
       if (!token) {
         this.logger.warn(`Disconnecting unauthenticated socket ${client.id}`);
@@ -48,7 +67,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      const decoded = jwt.verify(token, this.jwtSecret) as any;
+      const issuer = process.env.JWT_ISSUER || 'skillswap-api';
+      const audience = process.env.JWT_AUDIENCE || 'skillswap-client';
+
+      const decoded = jwt.verify(token, jwtSecret, {
+        algorithms: ['HS256'],
+        issuer,
+        audience,
+      }) as any;
+
+      if (!decoded || !decoded.sub) {
+        throw new Error('Malformed token claims');
+      }
+
       client.user = {
         id: decoded.sub,
         email: decoded.email,
@@ -58,7 +89,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // Join user's personal notification room
       client.join(`user:${client.user.id}`);
       this.logger.log(`Socket connected: ${client.id} (User: ${client.user.id})`);
-    } catch (err) {
+    } catch (err: any) {
       this.logger.warn(`Invalid token on socket connection: ${err.message}`);
       client.disconnect();
     }
